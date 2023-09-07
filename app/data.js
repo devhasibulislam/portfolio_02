@@ -1,3 +1,4 @@
+import assert from 'assert';
 import { cache } from 'react';
 const revalidate = 60;
 const MINUTES_5 = 60 * 5;
@@ -38,6 +39,7 @@ export async function getSocialAccounts(username) {
 	return res.json();
 }
 
+// cache is for GraphQL queries only. For REST API, use next.js revalidate.
 export const getPinnedRepos = cache(async (username) => {
 	console.log('Fetching pinned repos for', username);
 	console.time('getPinnedRepos');
@@ -169,9 +171,22 @@ export const getTrafficPageViews = async (username, reponame) => {
 	return { sumUniques, todayUniques };
 };
 
-export const getDependabotAlerts = cache(async (username, reponame) => {
+		const sumViews = response.views?.reduce((a, b) => a + b.count, 0) || 0;
+		const sumUniques = response.views?.reduce((a, b) => a + b.uniques, 0) || 0;
+		const todayUniques = response.views && response.views[response.views?.length - 1]?.uniques || 0;
+
+		return { sumViews, sumUniques, todayUniques };
+		
+	} catch (error) {
+		console.error('Error fetching traffic views', username, reponame, error);
+		return { sumViews: 0, sumUniques: 0, todayUniques: 0 };		
+	}
+};
+
+export const getDependabotAlerts = async (username, reponame) => {
 	const res = await fetch('https://api.github.com/repos/' + username + '/' + reponame + '/dependabot/alerts', {
 		headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` },
+		next: { revalidate: HOURS_1 },
 	});
 
 	const response = await res.json();
@@ -188,7 +203,8 @@ export const getDependabotAlerts = cache(async (username, reponame) => {
 	}, {});
 
 	return openAlertsBySeverity;
-}, HOURS_12);
+};
+
 
 /**
  * Determines if a repository is using Next.js App Router or legacy pages/_app.jsx. Or both.
@@ -232,3 +248,61 @@ export async function checkAppJsxExistence(repoOwner, repoName) {
 
 	return res;
 }
+
+// TODO: use this instead of getDependabotAlerts
+export const getDependabotAlertsGraphQl = cache(async (username) => {
+
+	assert(username, 'username is required');
+
+	try {
+		const res = await fetch('https://api.github.com/graphql', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${process.env.GH_TOKEN}`,
+				Cache: 'no-store',
+			},
+			next: { revalidate: 0 },
+			body: JSON.stringify({
+				query: `{
+				user(login: "${username}") {
+					repositories(first: 1, privacy: PUBLIC, isFork: false) {
+						nodes {
+							name
+							vulnerabilityAlerts(first: 100) {
+								nodes {
+									securityVulnerability {
+										severity
+									}
+									state
+								}
+							}
+						}
+					}
+				}
+			}`
+			}),
+		});
+
+		const response = await res.json();
+		const repos = response.data.user.repositories.nodes;
+		const openAlertsBySeverity = repos.reduce((acc, repo) => {
+			const alerts = repo.vulnerabilityAlerts.nodes;
+			if (alerts.length > 0) {
+				const openAlerts = alerts.filter((alert) => alert.state === 'OPEN');
+				if (openAlerts.length > 0) {
+					openAlerts.forEach((alert) => {
+						acc[alert.securityVulnerability.severity] = acc[alert.securityVulnerability.severity] ? acc[alert.securityVulnerability.severity] + 1 : 1;
+					});
+				}
+			}
+			return acc;
+		}, {});
+
+		return openAlertsBySeverity;
+	} catch (error) {
+		console.error('Error fetching dependabot alerts', username, error);
+		return {};
+	}
+
+}, HOURS_1);
+

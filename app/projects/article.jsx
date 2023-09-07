@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { EyeClosedIcon, EyeIcon, MarkGithubIcon, StarIcon, DependabotIcon } from '@primer/octicons-react';
+import { EyeClosedIcon, MarkGithubIcon, StarIcon, DependabotIcon } from '@primer/octicons-react';
 import { VercelInfo } from "../components/vercel-info";
-import { getTrafficPageViews, getDependabotAlerts } from "../data";
+import { GitHubInfo } from "./github-info";
+import { Suspense } from "react";
 
 export const Article = async ({ project }) => {
 
@@ -10,22 +11,11 @@ export const Article = async ({ project }) => {
     /** Repository visitors info. */
     let views = <span title="Can't get traffic data for someone else's repo."><EyeClosedIcon className="w-4 h-4" /></span>;
     let alerts = <span title="Can't get alerts data for someone else's repo."><DependabotIcon className="w-4 h-4" /></span>;
+    /** GitHub traffic and Dependabot information. Only available for thw owner. Make sure you have a PAT with correct permissions. */
+    let ghInfo = <>{views} {alerts}</>;
     const isGitHubUser = process.env.GITHUB_USERNAME === project.owner.login;
     if (isGitHubUser) {
-        const [{ todayUniques, sumUniques } = {}, openAlertsBySeverity] = await Promise.all([getTrafficPageViews(project.owner.login, project.name), getDependabotAlerts(project.owner.login, project.name)]);
-        views = <span title="Unique repository visitors: Last 14 days / Today.">
-            <EyeIcon className="w-4 h-4" />{" "}
-            {Intl.NumberFormat("en-US", { notation: "compact" }).format(sumUniques)}/{Intl.NumberFormat("en-US", { notation: "compact" }).format(todayUniques)}
-        </span>;
-
-        const alertColor = openAlertsBySeverity.critical > 0 ? "red" : openAlertsBySeverity.high > 0 ? "orange" : openAlertsBySeverity.medium > 0 ? "yellow" : openAlertsBySeverity.low > 0 ? "blue" : "gray";
-        const alertCountTotal = (openAlertsBySeverity.critical || 0) + (openAlertsBySeverity.high || 0) + (openAlertsBySeverity.medium || 0) + (openAlertsBySeverity.low || 0);
-        const alertTitle = alertCountTotal > 0 ? `Open Dependabot alerts: ` + (JSON.stringify(openAlertsBySeverity)) : "No open Dependabot alerts.";
-        
-        alerts = <span title={alertTitle}>
-            <DependabotIcon className="w-4 h-4 danger" fill={alertColor} />{" "}            
-            {Intl.NumberFormat("en-US", { notation: "compact" }).format(alertCountTotal)}
-        </span>;
+        ghInfo = <GitHubInfo githubUsername={project.owner.login} project={project.name} />;
     }
 
     return (
@@ -60,9 +50,9 @@ export const Article = async ({ project }) => {
             </p>
             <div className="flex justify-between gap-2 items-center float-left mt-2 border-t-2 border-gray-700 border-opacity-50">
                 <span className="text-zinc-500 text-xs">
-                    {views}
-                    {" "}
-                    {alerts}
+                    <Suspense fallback={<Loader />}>
+                        {ghInfo}
+                    </Suspense>
                 </span>
             </div>
             <div className="flex justify-between gap-2 items-center float-right mt-2 border-t-2 border-gray-700 border-opacity-50">
@@ -72,4 +62,13 @@ export const Article = async ({ project }) => {
             </div>
         </article>
     );
+};
+
+/**
+ * @todo Keep same icons as in the Alerts component but shimmer the numbers only.
+ */
+const Loader = () => {
+    return <span class="spinner-border" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </span>;
 };
