@@ -7,8 +7,6 @@ import data from "../data.json";
 const username = process.env.GITHUB_USERNAME || data.githubUsername;
 const displayName = data.displayName || username;
 
-export const runtime = 'edge';
-
 /** @type {import('next').Metadata} */
 export const metadata = {
 	title: {
