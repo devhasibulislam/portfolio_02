@@ -171,18 +171,6 @@ export const getTrafficPageViews = async (username, reponame) => {
 	return { sumUniques, todayUniques };
 };
 
-		const sumViews = response.views?.reduce((a, b) => a + b.count, 0) || 0;
-		const sumUniques = response.views?.reduce((a, b) => a + b.uniques, 0) || 0;
-		const todayUniques = response.views && response.views[response.views?.length - 1]?.uniques || 0;
-
-		return { sumViews, sumUniques, todayUniques };
-		
-	} catch (error) {
-		console.error('Error fetching traffic views', username, reponame, error);
-		return { sumViews: 0, sumUniques: 0, todayUniques: 0 };		
-	}
-};
-
 export const getDependabotAlerts = async (username, reponame) => {
 	const res = await fetch('https://api.github.com/repos/' + username + '/' + reponame + '/dependabot/alerts', {
 		headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` },
